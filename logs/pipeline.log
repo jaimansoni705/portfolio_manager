@@ -1,0 +1,17 @@
+2026-04-05 17:27:58  INFO  Running pipeline once on startup to verify...
+2026-04-05 17:27:58  INFO  =============================================
+2026-04-05 17:27:58  INFO  PIPELINE STARTED — 05 Apr 2026 17:27
+2026-04-05 17:27:58  INFO  =============================================
+2026-04-05 17:27:58  INFO  TASK 1: Collecting live + historical prices
+2026-04-05 17:28:37  INFO  TASK 2: Updating PostgreSQL database
+2026-04-05 17:28:48  INFO  TASK 3: Running ETL pipeline
+2026-04-05 17:29:04  INFO  TASK 4: Running portfolio optimizer
+2026-04-05 17:29:09  INFO  TASK 5: Running health check
+2026-04-05 17:29:09  INFO  =============================================
+2026-04-05 17:29:09  INFO  PIPELINE SUMMARY
+2026-04-05 17:29:09  INFO  =============================================
+2026-04-05 17:29:09  INFO  
+  5/5 tasks passed
+2026-04-05 17:29:09  INFO    Duration: 70s
+2026-04-05 17:29:09  INFO    Next run: tomorrow at 6:00 AM
+2026-04-05 17:29:09  INFO  =============================================

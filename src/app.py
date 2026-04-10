@@ -83,6 +83,8 @@ st.markdown("""
 # ─────────────────────────────────────────────
 @st.cache_data(ttl=3600)
 def load_all_data():
+    # load from processed CSV files
+    # (no database needed on cloud)
     stats_df      = pd.read_csv("data/processed/stock_stats.csv")
     frontier_df   = pd.read_csv("data/processed/efficient_frontier.csv")
     corr_matrix   = pd.read_csv("data/processed/correlation_matrix.csv",
@@ -698,6 +700,314 @@ def tab_live_prices(markets):
         st.cache_data.clear()
         st.rerun()
 
+# ─────────────────────────────────────────────
+# TAB 5 — SENTIMENT ANALYSIS
+# ─────────────────────────────────────────────
+def tab_sentiment():
+    st.markdown("### 🧠 Sentiment Analysis")
+    st.caption("Powered by VADER + FinBERT (ML Transformer) · News from last 7 days")
+
+    # load data
+    sentiment_path = "data/sentiment/sentiment_scores.csv"
+    headlines_path = "data/sentiment/headlines.csv"
+
+    if not os.path.exists(sentiment_path):
+        st.warning("No sentiment data found. Run `python src/sentiment.py` first.")
+        return
+
+    df       = pd.read_csv(sentiment_path)
+    head_df  = pd.read_csv(headlines_path) if os.path.exists(headlines_path) else pd.DataFrame()
+
+    # ── overall market sentiment gauge ──
+    avg_score = df["combined_score"].mean()
+
+    if avg_score > 0.15:
+        market_label = "📈 BULLISH"
+        gauge_color  = "#1D9E75"
+    elif avg_score < -0.15:
+        market_label = "📉 BEARISH"
+        gauge_color  = "#D85A30"
+    else:
+        market_label = "➡️ NEUTRAL"
+        gauge_color  = "#BA7517"
+
+    # ── top metric cards ──
+    c1, c2, c3, c4 = st.columns(4)
+
+    positive = len(df[df["sentiment_label"] == "positive"])
+    negative = len(df[df["sentiment_label"] == "negative"])
+    neutral  = len(df[df["sentiment_label"] == "neutral"])
+
+    c1.markdown(f"""
+    <div class="metric-card">
+        <div class="metric-label">Market Sentiment</div>
+        <div class="metric-value" style="color:{gauge_color};">{market_label}</div>
+        <div class="metric-sub">Combined Score: {avg_score:.3f}</div>
+    </div>""", unsafe_allow_html=True)
+
+    c2.markdown(f"""
+    <div class="metric-card">
+        <div class="metric-label">Bullish Stocks</div>
+        <div class="metric-value pos">{positive}</div>
+        <div class="metric-sub pos">Positive sentiment</div>
+    </div>""", unsafe_allow_html=True)
+
+    c3.markdown(f"""
+    <div class="metric-card">
+        <div class="metric-label">Bearish Stocks</div>
+        <div class="metric-value neg">{negative}</div>
+        <div class="metric-sub neg">Negative sentiment</div>
+    </div>""", unsafe_allow_html=True)
+
+    c4.markdown(f"""
+    <div class="metric-card">
+        <div class="metric-label">Neutral Stocks</div>
+        <div class="metric-value">{neutral}</div>
+        <div class="metric-sub" style="color:var(--color-text-secondary);">
+            Neutral sentiment
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── sentiment bar chart ──
+    col1, col2 = st.columns([3, 2])
+
+    with col1:
+        st.markdown('<div class="section-title">Sentiment Score per Stock</div>',
+                    unsafe_allow_html=True)
+
+        df_sorted = df.sort_values("combined_score", ascending=True)
+        colors    = [
+            "#1D9E75" if s == "positive"
+            else "#D85A30" if s == "negative"
+            else "#BA7517"
+            for s in df_sorted["sentiment_label"]
+        ]
+
+        fig = go.Figure(go.Bar(
+            x=df_sorted["combined_score"],
+            y=df_sorted["name"],
+            orientation="h",
+            marker_color=colors,
+            text=df_sorted["combined_score"].apply(
+                lambda x: f"+{x:.3f}" if x > 0 else f"{x:.3f}"
+            ),
+            textposition="outside",
+            hovertemplate=(
+                "<b>%{y}</b><br>"
+                "Score: %{x:.3f}<extra></extra>"
+            ),
+        ))
+        fig.add_vline(x=0,    line_color="#718096", line_width=1)
+        fig.add_vline(x=0.15, line_color="#1D9E75",
+                      line_dash="dash", line_width=1,
+                      annotation_text="Bullish threshold")
+        fig.add_vline(x=-0.15, line_color="#D85A30",
+                      line_dash="dash", line_width=1,
+                      annotation_text="Bearish threshold")
+        fig.update_layout(
+            height=600,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#e2e8f0"),
+            xaxis=dict(
+                title="Sentiment Score (-1 Bearish → +1 Bullish)",
+                gridcolor="#2d3748",
+                range=[-1, 1],
+            ),
+            yaxis=dict(showgrid=False),
+            margin=dict(l=120, r=80),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        st.markdown('<div class="section-title">VADER vs FinBERT Comparison</div>',
+                    unsafe_allow_html=True)
+
+        fig2 = go.Figure()
+        fig2.add_trace(go.Scatter(
+            x=df["vader_compound"],
+            y=df["finbert_compound"],
+            mode="markers+text",
+            marker=dict(
+                size=10,
+                color=df["combined_score"],
+                colorscale="RdYlGn",
+                cmin=-1, cmax=1,
+                showscale=True,
+                colorbar=dict(title="Score"),
+            ),
+            text=df["name"],
+            textposition="top center",
+            textfont=dict(size=8),
+            hovertemplate=(
+                "<b>%{text}</b><br>"
+                "VADER: %{x:.3f}<br>"
+                "FinBERT: %{y:.3f}<extra></extra>"
+            ),
+        ))
+
+        # diagonal line (perfect agreement)
+        fig2.add_trace(go.Scatter(
+            x=[-1, 1], y=[-1, 1],
+            mode="lines",
+            line=dict(color="#718096", dash="dash", width=1),
+            name="Perfect agreement",
+            showlegend=False,
+        ))
+
+        fig2.add_vline(x=0, line_color="#718096", line_width=0.5)
+        fig2.add_hline(y=0, line_color="#718096", line_width=0.5)
+
+        fig2.update_layout(
+            height=600,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#e2e8f0"),
+            xaxis=dict(
+                title="VADER Score",
+                gridcolor="#2d3748",
+                range=[-1, 1],
+            ),
+            yaxis=dict(
+                title="FinBERT Score",
+                gridcolor="#2d3748",
+                range=[-1, 1],
+            ),
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+
+    # ── sentiment by market ──
+    st.markdown('<div class="section-title">Sentiment by Market</div>',
+                unsafe_allow_html=True)
+
+    # merge with stats to get market info
+    stats_df = pd.read_csv("data/processed/stock_stats.csv")
+    merged   = df.merge(stats_df[["name", "market", "sector"]],
+                        on="name", how="left")
+
+    market_sentiment = merged.groupby("market")["combined_score"].mean().reset_index()
+    market_sentiment.columns = ["market", "avg_score"]
+
+    MARKET_COLORS = {
+        "India":  "#1D9E75",
+        "US":     "#185FA5",
+        "Europe": "#D85A30",
+        "Asia":   "#BA7517",
+    }
+
+    col3, col4 = st.columns(2)
+
+    with col3:
+        colors_m = [
+            MARKET_COLORS.get(m, "#888")
+            for m in market_sentiment["market"]
+        ]
+        fig3 = go.Figure(go.Bar(
+            x=market_sentiment["market"],
+            y=market_sentiment["avg_score"],
+            marker_color=colors_m,
+            text=market_sentiment["avg_score"].apply(
+                lambda x: f"+{x:.3f}" if x > 0 else f"{x:.3f}"
+            ),
+            textposition="outside",
+            hovertemplate="%{x}<br>Avg Score: %{y:.3f}<extra></extra>",
+        ))
+        fig3.add_hline(y=0, line_color="#718096", line_width=1)
+        fig3.update_layout(
+            title="Average Sentiment by Market",
+            height=320,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#e2e8f0"),
+            yaxis=dict(gridcolor="#2d3748",
+                       title="Avg Sentiment Score"),
+            xaxis=dict(showgrid=False),
+        )
+        col3.plotly_chart(fig3, use_container_width=True)
+
+    with col4:
+        sector_sentiment = merged.groupby("sector")["combined_score"].mean().reset_index()
+        sector_sentiment.columns = ["sector", "avg_score"]
+        sector_sentiment = sector_sentiment.sort_values("avg_score", ascending=False)
+
+        colors_s = [
+            "#1D9E75" if s > 0.15
+            else "#D85A30" if s < -0.15
+            else "#BA7517"
+            for s in sector_sentiment["avg_score"]
+        ]
+
+        fig4 = go.Figure(go.Bar(
+            x=sector_sentiment["sector"],
+            y=sector_sentiment["avg_score"],
+            marker_color=colors_s,
+            text=sector_sentiment["avg_score"].apply(
+                lambda x: f"+{x:.3f}" if x > 0 else f"{x:.3f}"
+            ),
+            textposition="outside",
+        ))
+        fig4.add_hline(y=0, line_color="#718096", line_width=1)
+        fig4.update_layout(
+            title="Average Sentiment by Sector",
+            height=320,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#e2e8f0"),
+            yaxis=dict(gridcolor="#2d3748",
+                       title="Avg Sentiment Score"),
+            xaxis=dict(showgrid=False, tickangle=-20),
+        )
+        col4.plotly_chart(fig4, use_container_width=True)
+
+    # ── news headlines ──
+    st.markdown('<div class="section-title">Latest News Headlines</div>',
+                unsafe_allow_html=True)
+
+    if not head_df.empty:
+        # filter by stock
+        selected_stock = st.selectbox(
+            "Select Stock",
+            ["All"] + sorted(df["name"].tolist()),
+        )
+
+        if selected_stock != "All":
+            filtered = head_df[head_df["stock"] == selected_stock]
+        else:
+            filtered = head_df
+
+        for _, row in filtered.head(20).iterrows():
+            score    = row["sentiment"]
+            icon     = "📈" if score == "positive" else "📉" if score == "negative" else "➡️"
+            color    = "#1D9E75" if score == "positive" \
+                       else "#D85A30" if score == "negative" \
+                       else "#BA7517"
+
+            st.markdown(f"""
+            <div style="
+                border-left: 3px solid {color};
+                padding: 8px 12px;
+                margin-bottom: 8px;
+                background: #1a1f2e;
+                border-radius: 0 8px 8px 0;
+            ">
+                <span style="font-size:13px;">
+                    {icon} <b style="color:{color};">{row['stock']}</b>
+                    &nbsp;·&nbsp;
+                    {row['headline']}
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("No headlines data found.")
+
+    # ── refresh button ──
+    if st.button("🔄 Refresh Sentiment"):
+        with st.spinner("Running sentiment analysis... (takes 2-3 mins)"):
+            os.system("python src/sentiment.py")
+        st.cache_data.clear()
+        st.rerun()
 
 # ─────────────────────────────────────────────
 # MAIN APP
@@ -729,11 +1039,12 @@ def main():
     stats_df = stats_df[stats_df["market"].isin(markets)]
 
     # tabs
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊 Overview",
         "🧠 Optimizer",
         "📈 Charts",
         "🌐 Live Prices",
+        "🧠 Sentiment",
     ])
 
     with tab1:
@@ -755,7 +1066,9 @@ def main():
 
     with tab4:
         tab_live_prices(markets)
-
+        
+    with tab5:
+        tab_sentiment()
 
 if __name__ == "__main__":
     main()

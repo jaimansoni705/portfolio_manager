@@ -705,6 +705,21 @@ def tab_live_prices(markets):
 # ─────────────────────────────────────────────
 def tab_sentiment():
     st.markdown("### 🧠 Sentiment Analysis")
+    st.caption("Powered by VADER + FinBERT · Results pre-computed locally")
+
+    sentiment_path = "data/sentiment/sentiment_scores.csv"
+    headlines_path = "data/sentiment/headlines.csv"
+
+    if not os.path.exists(sentiment_path):
+        st.warning("No sentiment data found.")
+        return
+
+    # load pre-computed results from CSV
+    df      = pd.read_csv(sentiment_path)
+    head_df = pd.read_csv(headlines_path) if os.path.exists(headlines_path) else pd.DataFrame()
+
+    # rest of your visualization code stays the same...
+    st.markdown("### 🧠 Sentiment Analysis")
     st.caption("Powered by VADER + FinBERT (ML Transformer) · News from last 7 days")
 
     # load data

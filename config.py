@@ -84,3 +84,5 @@ END_DATE   = "2024-12-31"
 
 # Base currency to normalize everything into
 BASE_CURRENCY = "USD"
+# ── NEWS API ──────────────────────────────────
+NEWS_API_KEY = "06df601f06884d598fba471cad8dd732"
